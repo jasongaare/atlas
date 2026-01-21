@@ -17,8 +17,16 @@
  *       "react": 85234,
  *       "react-native": 456789,
  *       "expo": 123456,
- *       "@company/ui-lib": 234567,
- *       "app": 987654
+ *       "@company/ui-lib": 234567
+ *     },
+ *     "files": {
+ *       "app/components/Button.tsx": 2345,
+ *       "app/screens/HomeScreen.tsx": 5678,
+ *       "app/utils/helpers.ts": 1234
+ *     },
+ *     "assets": {
+ *       "assets/images/logo.png": 12345,
+ *       "assets/fonts/custom.ttf": 23456
  *     }
  *   }
  * ]
@@ -61,14 +69,14 @@ export type AtlasStatsBundle = {
 
   /**
    * Total size of the entire bundle in bytes (transformed output).
-   * This equals the sum of all package sizes.
+   * This equals the sum of all package sizes, files, and assets.
    */
   bundleSize: number;
 
   /**
-   * Package-level size aggregations.
+   * Package-level size aggregations for external dependencies.
    *
-   * Maps each NPM package (or "app" for local code) to its total size in bytes.
+   * Maps each NPM package to its total size in bytes.
    * Sizes represent transformed/bundled output after Metro processing.
    *
    * Package names are sorted alphabetically for diff-friendly output.
@@ -77,7 +85,6 @@ export type AtlasStatsBundle = {
    * ```json
    * {
    *   "@babel/runtime": 12345,
-   *   "app": 987654,
    *   "expo": 123456,
    *   "react": 85234,
    *   "react-native": 456789
@@ -85,4 +92,41 @@ export type AtlasStatsBundle = {
    * ```
    */
   packages: Record<string, number>;
+
+  /**
+   * Individual app source files with their sizes.
+   *
+   * Maps relative file paths (from project root) to their size in bytes.
+   * Only includes JavaScript/TypeScript source files from your app code.
+   *
+   * Paths are sorted alphabetically for diff-friendly output.
+   *
+   * @example
+   * ```json
+   * {
+   *   "app/components/Button.tsx": 2345,
+   *   "app/screens/HomeScreen.tsx": 5678,
+   *   "app/utils/helpers.ts": 1234
+   * }
+   * ```
+   */
+  files: Record<string, number>;
+
+  /**
+   * Asset files (images, fonts, etc.) with their sizes.
+   *
+   * Maps relative asset paths to their size in bytes.
+   * Includes common asset types: png, jpg, gif, svg, ttf, otf, woff, etc.
+   *
+   * Paths are sorted alphabetically for diff-friendly output.
+   *
+   * @example
+   * ```json
+   * {
+   *   "assets/images/logo.png": 12345,
+   *   "assets/fonts/custom-font.ttf": 23456
+   * }
+   * ```
+   */
+  assets: Record<string, number>;
 };

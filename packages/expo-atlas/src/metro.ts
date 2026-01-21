@@ -10,12 +10,20 @@ import {
   finalizeAtlasStats,
 } from './data/AtlasFileSource';
 import { convertGraph, convertMetroConfig } from './data/MetroGraphSource';
+import { env } from './utils/env';
 
 export { waitUntilAtlasFileReady } from './data/AtlasFileSource';
 
 type ExpoAtlasOptions = Partial<{
   /** The output of the atlas file, defaults to `.expo/atlas.json` */
   atlasFile: string;
+  /**
+   * Only generate the lightweight atlas-stats.json file, skip the full atlas.jsonl.
+   * Reduces disk I/O and saves ~90MB per export.
+   * Can also be enabled via EXPO_ATLAS_STATS_ONLY=true environment variable.
+   * @default false
+   */
+  statsOnly: boolean;
 }>;
 
 /**
@@ -33,6 +41,15 @@ type ExpoAtlasOptions = Partial<{
  *
  *   module.exports = withExpoAtlas(config)
  * ```
+ *
+ * @example Stats-only mode (skip 90MB atlas.jsonl file):
+ * ```js
+ *   module.exports = withExpoAtlas(config, { statsOnly: true })
+ * ```
+ * Or via environment variable:
+ * ```bash
+ *   EXPO_ATLAS_STATS_ONLY=true npx expo export
+ * ```
  */
 export function withExpoAtlas(config: MetroConfig, options: ExpoAtlasOptions = {}) {
   const projectRoot = config.projectRoot;
@@ -42,11 +59,16 @@ export function withExpoAtlas(config: MetroConfig, options: ExpoAtlasOptions = {
     throw new Error('No "projectRoot" configured in Metro config.');
   }
 
+  // Check both option and env var (option takes precedence)
+  const statsOnly = options?.statsOnly ?? env.EXPO_ATLAS_STATS_ONLY;
   const atlasFile = options?.atlasFile ?? getAtlasPath(projectRoot);
   const metroConfig = convertMetroConfig(config);
 
-  // Note(cedric): we don't have to await this, Metro would never bundle before this is finishes
-  ensureAtlasFileExist(atlasFile);
+  // Only create the full atlas.jsonl file if not in stats-only mode
+  if (!statsOnly) {
+    // Note(cedric): we don't have to await this, Metro would never bundle before this is finishes
+    ensureAtlasFileExist(atlasFile);
+  }
 
   // @ts-expect-error
   config.serializer.customSerializer = (entryPoint, preModules, graph, serializeOptions) => {
@@ -61,7 +83,9 @@ export function withExpoAtlas(config: MetroConfig, options: ExpoAtlasOptions = {
     });
 
     // Note(cedric): we don't have to await this, it has a built-in write queue
-    writeAtlasEntry(atlasFile, atlasBundle);
+    if (!statsOnly) {
+      writeAtlasEntry(atlasFile, atlasBundle);
+    }
     writeAtlasStatsEntry(atlasFile, atlasBundle);
 
     return originalSerializer(entryPoint, preModules, graph, serializeOptions);
@@ -73,8 +97,15 @@ export function withExpoAtlas(config: MetroConfig, options: ExpoAtlasOptions = {
 /**
  * Fully reset, or recreate, the Expo Atlas file containing all Metro information.
  * This method should only be called once per exporting session, to avoid overwriting data with mutliple Metro instances.
+ *
+ * In stats-only mode (EXPO_ATLAS_STATS_ONLY=true), this skips creating the full atlas.jsonl file.
  */
 export async function resetExpoAtlasFile(projectRoot: string) {
+  // Skip creating the atlas.jsonl file in stats-only mode
+  if (env.EXPO_ATLAS_STATS_ONLY) {
+    return null;
+  }
+
   const filePath = getAtlasPath(projectRoot);
   await createAtlasFile(filePath);
   return filePath;
