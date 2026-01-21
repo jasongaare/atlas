@@ -64,11 +64,9 @@ export function withExpoAtlas(config: MetroConfig, options: ExpoAtlasOptions = {
   const atlasFile = options?.atlasFile ?? getAtlasPath(projectRoot);
   const metroConfig = convertMetroConfig(config);
 
-  // Only create the full atlas.jsonl file if not in stats-only mode
-  if (!statsOnly) {
-    // Note(cedric): we don't have to await this, Metro would never bundle before this is finishes
-    ensureAtlasFileExist(atlasFile);
-  }
+  // Ensure directory exists; in stats-only mode, skip creating atlas.jsonl
+  // Note(cedric): we don't have to await this, Metro would never bundle before this finishes
+  ensureAtlasFileExist(atlasFile, statsOnly);
 
   // @ts-expect-error
   config.serializer.customSerializer = (entryPoint, preModules, graph, serializeOptions) => {
@@ -98,11 +96,17 @@ export function withExpoAtlas(config: MetroConfig, options: ExpoAtlasOptions = {
  * Fully reset, or recreate, the Expo Atlas file containing all Metro information.
  * This method should only be called once per exporting session, to avoid overwriting data with mutliple Metro instances.
  *
- * In stats-only mode (EXPO_ATLAS_STATS_ONLY=true), this skips creating the full atlas.jsonl file.
+ * In stats-only mode, this skips creating the full atlas.jsonl file.
+ *
+ * @param projectRoot - The root directory of the project
+ * @param statsOnly - Only generate stats file, skip full atlas.jsonl. Defaults to EXPO_ATLAS_STATS_ONLY env var.
  */
-export async function resetExpoAtlasFile(projectRoot: string) {
+export async function resetExpoAtlasFile(
+  projectRoot: string,
+  statsOnly: boolean = env.EXPO_ATLAS_STATS_ONLY
+) {
   // Skip creating the atlas.jsonl file in stats-only mode
-  if (env.EXPO_ATLAS_STATS_ONLY) {
+  if (statsOnly) {
     return null;
   }
 

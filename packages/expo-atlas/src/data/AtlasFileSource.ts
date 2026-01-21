@@ -172,8 +172,19 @@ export async function createAtlasFile(filePath: string) {
 
 /**
  * Create the Atlas file if it doesn't exist, or recreate it if it's incompatible.
+ * In stats-only mode, only creates the directory without creating the atlas.jsonl file.
+ *
+ * @param filePath - Path to the atlas.jsonl file
+ * @param statsOnly - If true, only ensure directory exists (skip atlas.jsonl creation)
  */
-export async function ensureAtlasFileExist(filePath: string) {
+export async function ensureAtlasFileExist(filePath: string, statsOnly: boolean = false) {
+  // In stats-only mode, just ensure the directory exists
+  if (statsOnly) {
+    await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+    return true;
+  }
+
+  // Full mode: validate and create atlas.jsonl if needed
   try {
     await validateAtlasFile(filePath);
   } catch (error: any) {
@@ -207,7 +218,6 @@ const ASSET_EXTENSIONS = new Set([
   'webm',
   'mp3',
   'wav',
-  'json', // For data assets
 ]);
 
 /**
