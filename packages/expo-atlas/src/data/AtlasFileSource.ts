@@ -2,6 +2,7 @@ import assert from 'assert';
 import fs from 'fs';
 import path from 'path';
 
+import type { AtlasStatsBundle } from './stats-types';
 import type { PartialAtlasBundle, AtlasBundle, AtlasSource, AtlasModule } from './types';
 import { name, version } from '../../package.json';
 import { env } from '../utils/env';
@@ -90,6 +91,9 @@ export async function readAtlasEntry(filePath: string, id: number): Promise<Atla
 
 /** Simple promise to avoid mixing appended data */
 let writeQueue: Promise<any> = Promise.resolve();
+
+/** In-memory accumulator for bundle stats, keyed by bundle ID for deduplication */
+const statsAccumulator: Map<string, AtlasStatsBundle> = new Map();
 
 /**
  * Wait until the Atlas file has all data written.
@@ -180,4 +184,94 @@ export async function ensureAtlasFileExist(filePath: string) {
   }
 
   return true;
+}
+
+/**
+ * Convert an AtlasBundle to compact stats format for CI analysis.
+ * Aggregates module sizes by package name, treating local code as "app".
+ */
+function convertBundleToStats(bundle: AtlasBundle): AtlasStatsBundle {
+  const packages: Record<string, number> = {};
+
+  // Helper to accumulate package size
+  const addModuleSize = (module: AtlasModule) => {
+    const pkg = module.package ?? 'app';
+    packages[pkg] = (packages[pkg] ?? 0) + module.size;
+  };
+
+  // Aggregate regular modules
+  for (const module of Array.from(bundle.modules.values())) {
+    addModuleSize(module);
+  }
+
+  // Aggregate runtime modules (Metro polyfills)
+  for (const module of bundle.runtimeModules) {
+    addModuleSize(module);
+  }
+
+  // Calculate total bundle size
+  const bundleSize = Object.values(packages).reduce((sum, size) => sum + size, 0);
+
+  // Sort package keys alphabetically for diff-friendly output
+  const sortedPackages: Record<string, number> = {};
+  Object.keys(packages)
+    .sort()
+    .forEach((key) => {
+      sortedPackages[key] = packages[key];
+    });
+
+  return {
+    platform: bundle.platform,
+    environment: bundle.environment,
+    entryPoint: bundle.entryPoint,
+    bundleSize,
+    packages: sortedPackages,
+  };
+}
+
+/**
+ * Accumulate stats for a bundle. Call this for each bundle written to atlas.jsonl.
+ * Stats are held in memory until finalizeAtlasStats() is called.
+ */
+export function writeAtlasStatsEntry(_filePath: string, entry: AtlasBundle): void {
+  const statsBundle = convertBundleToStats(entry);
+  // Use bundle ID as key to handle duplicate writes (last write wins)
+  statsAccumulator.set(entry.id, statsBundle);
+}
+
+/**
+ * Write accumulated stats to disk as a single JSON file.
+ * Call this after all bundles are processed (e.g., at end of Metro export).
+ */
+export function finalizeAtlasStats(filePath: string): Promise<void> {
+  const bundles = Array.from(statsAccumulator.values());
+
+  // Sort bundles for consistent, diff-friendly output
+  bundles.sort((a, b) => {
+    if (a.platform !== b.platform) return a.platform.localeCompare(b.platform);
+    if (a.environment !== b.environment) return a.environment.localeCompare(b.environment);
+    return a.entryPoint.localeCompare(b.entryPoint);
+  });
+
+  const statsPath = filePath.replace(/atlas\.jsonl$/, 'atlas-stats.json');
+
+  // Queue the write operation using existing pattern
+  writeQueue = writeQueue.then(async () => {
+    const content = JSON.stringify(bundles, null, 2) + '\n';
+    await fs.promises.writeFile(statsPath, content, 'utf-8');
+  });
+
+  // Clear accumulator after successful write
+  writeQueue = writeQueue.then(() => {
+    statsAccumulator.clear();
+  });
+
+  return writeQueue;
+}
+
+/**
+ * Get the default stats file path for a project.
+ */
+export function getAtlasStatsPath(projectRoot: string): string {
+  return path.join(projectRoot, '.expo/atlas-stats.json');
 }

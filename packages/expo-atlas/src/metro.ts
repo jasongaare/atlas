@@ -4,7 +4,10 @@ import {
   createAtlasFile,
   ensureAtlasFileExist,
   getAtlasPath,
+  getAtlasStatsPath,
   writeAtlasEntry,
+  writeAtlasStatsEntry,
+  finalizeAtlasStats,
 } from './data/AtlasFileSource';
 import { convertGraph, convertMetroConfig } from './data/MetroGraphSource';
 
@@ -47,11 +50,19 @@ export function withExpoAtlas(config: MetroConfig, options: ExpoAtlasOptions = {
 
   // @ts-expect-error
   config.serializer.customSerializer = (entryPoint, preModules, graph, serializeOptions) => {
+    // Convert once, use twice (optimization)
+    const atlasBundle = convertGraph({
+      projectRoot,
+      entryPoint,
+      preModules,
+      graph,
+      serializeOptions,
+      metroConfig,
+    });
+
     // Note(cedric): we don't have to await this, it has a built-in write queue
-    writeAtlasEntry(
-      atlasFile,
-      convertGraph({ projectRoot, entryPoint, preModules, graph, serializeOptions, metroConfig })
-    );
+    writeAtlasEntry(atlasFile, atlasBundle);
+    writeAtlasStatsEntry(atlasFile, atlasBundle);
 
     return originalSerializer(entryPoint, preModules, graph, serializeOptions);
   };
@@ -67,4 +78,28 @@ export async function resetExpoAtlasFile(projectRoot: string) {
   const filePath = getAtlasPath(projectRoot);
   await createAtlasFile(filePath);
   return filePath;
+}
+
+/**
+ * Finalize and write the atlas-stats.json file.
+ * Call this after all Metro bundles are exported.
+ *
+ * @example
+ * ```ts
+ * import { resetExpoAtlasFile, finalizeExpoAtlasStats } from 'expo-atlas/metro';
+ *
+ * // At start of export
+ * await resetExpoAtlasFile(projectRoot);
+ *
+ * // ... Metro bundling happens ...
+ *
+ * // After export completes
+ * const statsPath = await finalizeExpoAtlasStats(projectRoot);
+ * console.log(`Stats written to: ${statsPath}`);
+ * ```
+ */
+export async function finalizeExpoAtlasStats(projectRoot: string): Promise<string> {
+  const atlasPath = getAtlasPath(projectRoot);
+  await finalizeAtlasStats(atlasPath);
+  return getAtlasStatsPath(projectRoot);
 }
