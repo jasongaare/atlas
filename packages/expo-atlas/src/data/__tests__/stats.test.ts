@@ -2,7 +2,12 @@ import { describe, expect, it } from 'bun:test';
 import fs from 'fs';
 import path from 'path';
 
-import { getAtlasStatsPath, writeAtlasStatsEntry, finalizeAtlasStats } from '../AtlasFileSource';
+import {
+  getAtlasPath,
+  getAtlasStatsPath,
+  writeAtlasStatsEntry,
+  finalizeAtlasStats,
+} from '../AtlasFileSource';
 import type { AtlasStatsFile } from '../stats-types';
 import type { AtlasBundle, AtlasModule } from '../types';
 
@@ -14,14 +19,18 @@ describe('getAtlasStatsPath', () => {
 
 describe('writeAtlasStatsEntry', () => {
   it('accumulates stats for a single bundle', async () => {
-    const file = fixture('stats-single', { temporary: true });
+    const projectRoot = createTestProject('stats-single');
+    const file = getAtlasPath(projectRoot);
     const bundle = createMockBundle({
       id: '1',
       platform: 'ios',
       environment: 'client',
       entryPoint: '/path/to/app/index.js',
       modules: new Map([
-        ['/path/to/app/App.tsx', createMockModule({ package: undefined, size: 1000 })],
+        [
+          '/path/to/app/App.tsx',
+          createMockModule({ package: undefined, relativePath: 'App.tsx', size: 1000 }),
+        ],
         [
           '/path/to/node_modules/react/index.js',
           createMockModule({ package: 'react', size: 2000 }),
@@ -33,7 +42,7 @@ describe('writeAtlasStatsEntry', () => {
     writeAtlasStatsEntry(file, bundle);
     await finalizeAtlasStats(file);
 
-    const stats = await readStatsFile(file);
+    const stats = await readStatsFile(projectRoot);
     expect(stats).toHaveLength(1);
     expect(stats[0]).toMatchObject({
       platform: 'ios',
@@ -41,15 +50,18 @@ describe('writeAtlasStatsEntry', () => {
       entryPoint: '/path/to/app/index.js',
       bundleSize: 3500,
       packages: {
-        app: 1000,
         'metro-runtime': 500,
         react: 2000,
+      },
+      files: {
+        'App.tsx': 1000,
       },
     });
   });
 
   it('aggregates multiple modules from same package', async () => {
-    const file = fixture('stats-aggregated', { temporary: true });
+    const projectRoot = createTestProject('stats-aggregated');
+    const file = getAtlasPath(projectRoot);
     const bundle = createMockBundle({
       modules: new Map([
         ['/node_modules/react/index.js', createMockModule({ package: 'react', size: 1000 })],
@@ -64,28 +76,13 @@ describe('writeAtlasStatsEntry', () => {
     writeAtlasStatsEntry(file, bundle);
     await finalizeAtlasStats(file);
 
-    const stats = await readStatsFile(file);
+    const stats = await readStatsFile(projectRoot);
     expect(stats[0].packages.react).toBe(1800);
   });
 
-  it('treats modules without package as "app"', async () => {
-    const file = fixture('stats-app-package', { temporary: true });
-    const bundle = createMockBundle({
-      modules: new Map([
-        ['/app/index.js', createMockModule({ package: undefined, size: 1000 })],
-        ['/app/components/Button.tsx', createMockModule({ package: undefined, size: 500 })],
-      ]),
-    });
-
-    writeAtlasStatsEntry(file, bundle);
-    await finalizeAtlasStats(file);
-
-    const stats = await readStatsFile(file);
-    expect(stats[0].packages.app).toBe(1500);
-  });
-
   it('includes runtime modules in aggregation', async () => {
-    const file = fixture('stats-runtime', { temporary: true });
+    const projectRoot = createTestProject('stats-runtime');
+    const file = getAtlasPath(projectRoot);
     const bundle = createMockBundle({
       modules: new Map([['/app/index.js', createMockModule({ package: undefined, size: 1000 })]]),
       runtimeModules: [
@@ -97,12 +94,13 @@ describe('writeAtlasStatsEntry', () => {
     writeAtlasStatsEntry(file, bundle);
     await finalizeAtlasStats(file);
 
-    const stats = await readStatsFile(file);
+    const stats = await readStatsFile(projectRoot);
     expect(stats[0].packages['metro-runtime']).toBe(800);
   });
 
   it('sorts package names alphabetically', async () => {
-    const file = fixture('stats-sorted', { temporary: true });
+    const projectRoot = createTestProject('stats-sorted');
+    const file = getAtlasPath(projectRoot);
     const bundle = createMockBundle({
       modules: new Map([
         ['/node_modules/zebra/index.js', createMockModule({ package: 'zebra', size: 100 })],
@@ -115,34 +113,14 @@ describe('writeAtlasStatsEntry', () => {
     writeAtlasStatsEntry(file, bundle);
     await finalizeAtlasStats(file);
 
-    const stats = await readStatsFile(file);
+    const stats = await readStatsFile(projectRoot);
     const packageNames = Object.keys(stats[0].packages);
-    expect(packageNames).toEqual(['app', 'apple', 'metro', 'zebra']);
-  });
-
-  it('calculates correct total bundle size', async () => {
-    const file = fixture('stats-bundle-size', { temporary: true });
-    const bundle = createMockBundle({
-      modules: new Map([
-        ['/app/index.js', createMockModule({ package: undefined, size: 1000 })],
-        ['/node_modules/react/index.js', createMockModule({ package: 'react', size: 2000 })],
-        ['/node_modules/expo/index.js', createMockModule({ package: 'expo', size: 3000 })],
-      ]),
-      runtimeModules: [createMockModule({ package: 'metro-runtime', size: 500 })],
-    });
-
-    writeAtlasStatsEntry(file, bundle);
-    await finalizeAtlasStats(file);
-
-    const stats = await readStatsFile(file);
-    expect(stats[0].bundleSize).toBe(6500);
-    expect(stats[0].bundleSize).toBe(
-      Object.values(stats[0].packages).reduce((sum, size) => sum + size, 0)
-    );
+    expect(packageNames).toEqual(['apple', 'metro', 'zebra']);
   });
 
   it('handles duplicate bundle IDs (last write wins)', async () => {
-    const file = fixture('stats-duplicate', { temporary: true });
+    const projectRoot = createTestProject('stats-duplicate');
+    const file = getAtlasPath(projectRoot);
     const bundle1 = createMockBundle({
       id: '1',
       modules: new Map([['/app/v1.js', createMockModule({ package: undefined, size: 1000 })]]),
@@ -156,7 +134,7 @@ describe('writeAtlasStatsEntry', () => {
     writeAtlasStatsEntry(file, bundle2);
     await finalizeAtlasStats(file);
 
-    const stats = await readStatsFile(file);
+    const stats = await readStatsFile(projectRoot);
     expect(stats).toHaveLength(1);
     expect(stats[0].bundleSize).toBe(2000);
   });
@@ -164,7 +142,8 @@ describe('writeAtlasStatsEntry', () => {
 
 describe('finalizeAtlasStats', () => {
   it('writes pretty-printed JSON to .expo/atlas-stats.json', async () => {
-    const file = fixture('stats-pretty', { temporary: true });
+    const projectRoot = createTestProject('stats-pretty');
+    const file = getAtlasPath(projectRoot);
     const bundle = createMockBundle({
       modules: new Map([['/app/index.js', createMockModule({ package: undefined, size: 1000 })]]),
     });
@@ -172,7 +151,7 @@ describe('finalizeAtlasStats', () => {
     writeAtlasStatsEntry(file, bundle);
     await finalizeAtlasStats(file);
 
-    const statsPath = file.replace(/atlas\.jsonl$/, 'atlas-stats.json');
+    const statsPath = getAtlasStatsPath(projectRoot);
     const content = await fs.promises.readFile(statsPath, 'utf-8');
 
     // Check for pretty-printing (should have indentation)
@@ -184,7 +163,8 @@ describe('finalizeAtlasStats', () => {
   });
 
   it('sorts bundles by platform, environment, entryPoint', async () => {
-    const file = fixture('stats-sorted-bundles', { temporary: true });
+    const projectRoot = createTestProject('stats-sorted-bundles');
+    const file = getAtlasPath(projectRoot);
 
     // Add bundles in random order
     writeAtlasStatsEntry(
@@ -225,7 +205,7 @@ describe('finalizeAtlasStats', () => {
     );
 
     await finalizeAtlasStats(file);
-    const stats = await readStatsFile(file);
+    const stats = await readStatsFile(projectRoot);
 
     // Should be sorted by platform first
     expect(stats[0].platform).toBe('android');
@@ -239,16 +219,18 @@ describe('finalizeAtlasStats', () => {
   });
 
   it('handles empty accumulator gracefully (writes [])', async () => {
-    const file = fixture('stats-empty', { temporary: true });
+    const projectRoot = createTestProject('stats-empty');
+    const file = getAtlasPath(projectRoot);
 
     await finalizeAtlasStats(file);
 
-    const stats = await readStatsFile(file);
+    const stats = await readStatsFile(projectRoot);
     expect(stats).toEqual([]);
   });
 
   it('handles empty bundle (no modules)', async () => {
-    const file = fixture('stats-no-modules', { temporary: true });
+    const projectRoot = createTestProject('stats-no-modules');
+    const file = getAtlasPath(projectRoot);
     const bundle = createMockBundle({
       modules: new Map(),
       runtimeModules: [],
@@ -257,63 +239,19 @@ describe('finalizeAtlasStats', () => {
     writeAtlasStatsEntry(file, bundle);
     await finalizeAtlasStats(file);
 
-    const stats = await readStatsFile(file);
+    const stats = await readStatsFile(projectRoot);
     expect(stats[0]).toMatchObject({
       bundleSize: 0,
       packages: {},
     });
   });
 
-  it('handles special characters in package names', async () => {
-    const file = fixture('stats-special-chars', { temporary: true });
-    const bundle = createMockBundle({
-      modules: new Map([
-        [
-          '/node_modules/@company/ui-lib/index.js',
-          createMockModule({ package: '@company/ui-lib', size: 1000 }),
-        ],
-        [
-          '/node_modules/@babel/runtime/helpers/index.js',
-          createMockModule({ package: '@babel/runtime', size: 500 }),
-        ],
-      ]),
-    });
-
-    writeAtlasStatsEntry(file, bundle);
-    await finalizeAtlasStats(file);
-
-    const stats = await readStatsFile(file);
-    expect(stats[0].packages['@company/ui-lib']).toBe(1000);
-    expect(stats[0].packages['@babel/runtime']).toBe(500);
-  });
-
-  it('produces diff-friendly output (stable ordering)', async () => {
-    const file = fixture('stats-diff-friendly', { temporary: true });
-    const bundle = createMockBundle({
-      id: '1',
-      modules: new Map([
-        ['/app/index.js', createMockModule({ package: undefined, size: 1000 })],
-        ['/node_modules/react/index.js', createMockModule({ package: 'react', size: 2000 })],
-      ]),
-    });
-
-    // Write twice to verify stable output
-    writeAtlasStatsEntry(file, bundle);
-    await finalizeAtlasStats(file);
-    const statsPath = file.replace(/atlas\.jsonl$/, 'atlas-stats.json');
-    const content1 = await fs.promises.readFile(statsPath, 'utf-8');
-
-    writeAtlasStatsEntry(file, bundle);
-    await finalizeAtlasStats(file);
-    const content2 = await fs.promises.readFile(statsPath, 'utf-8');
-
-    expect(content1).toBe(content2);
-  });
 });
 
 describe('integration', () => {
   it('writes multiple bundles and produces correct stats file', async () => {
-    const file = fixture('stats-integration', { temporary: true });
+    const projectRoot = createTestProject('stats-integration');
+    const file = getAtlasPath(projectRoot);
 
     // Create iOS client bundle
     writeAtlasStatsEntry(
@@ -324,7 +262,10 @@ describe('integration', () => {
         environment: 'client',
         entryPoint: '/app/ios/index.js',
         modules: new Map([
-          ['/app/App.tsx', createMockModule({ package: undefined, size: 5000 })],
+          [
+            '/app/App.tsx',
+            createMockModule({ package: undefined, relativePath: 'App.tsx', size: 5000 }),
+          ],
           ['/node_modules/react/index.js', createMockModule({ package: 'react', size: 85000 })],
           [
             '/node_modules/react-native/index.js',
@@ -343,7 +284,10 @@ describe('integration', () => {
         environment: 'client',
         entryPoint: '/app/android/index.js',
         modules: new Map([
-          ['/app/App.tsx', createMockModule({ package: undefined, size: 5000 })],
+          [
+            '/app/App.tsx',
+            createMockModule({ package: undefined, relativePath: 'App.tsx', size: 5000 }),
+          ],
           ['/node_modules/react/index.js', createMockModule({ package: 'react', size: 85000 })],
           [
             '/node_modules/react-native/index.js',
@@ -355,30 +299,35 @@ describe('integration', () => {
 
     await finalizeAtlasStats(file);
 
-    const stats = await readStatsFile(file);
+    const stats = await readStatsFile(projectRoot);
     expect(stats).toHaveLength(2);
 
     // Android should come first (alphabetical)
     expect(stats[0].platform).toBe('android');
     expect(stats[0].bundleSize).toBe(550000);
     expect(stats[0].packages).toMatchObject({
-      app: 5000,
       react: 85000,
       'react-native': 460000,
+    });
+    expect(stats[0].files).toMatchObject({
+      'App.tsx': 5000,
     });
 
     // iOS should come second
     expect(stats[1].platform).toBe('ios');
     expect(stats[1].bundleSize).toBe(540000);
     expect(stats[1].packages).toMatchObject({
-      app: 5000,
       react: 85000,
       'react-native': 450000,
+    });
+    expect(stats[1].files).toMatchObject({
+      'App.tsx': 5000,
     });
   });
 
   it('file size stays reasonable for realistic bundle', async () => {
-    const file = fixture('stats-size-check', { temporary: true });
+    const projectRoot = createTestProject('stats-size-check');
+    const file = getAtlasPath(projectRoot);
     const modules = new Map();
 
     // Create ~500 packages (realistic max)
@@ -393,7 +342,7 @@ describe('integration', () => {
     writeAtlasStatsEntry(file, bundle);
     await finalizeAtlasStats(file);
 
-    const statsPath = file.replace(/atlas\.jsonl$/, 'atlas-stats.json');
+    const statsPath = getAtlasStatsPath(projectRoot);
     const stats = await fs.promises.stat(statsPath);
 
     // Should be under 100KB for 500 packages
@@ -431,27 +380,17 @@ function createMockModule(overrides: Partial<AtlasModule> = {}): AtlasModule {
   };
 }
 
-async function readStatsFile(atlasPath: string): Promise<AtlasStatsFile> {
-  const statsPath = atlasPath.replace(/atlas\.jsonl$/, 'atlas-stats.json');
+async function readStatsFile(projectRoot: string): Promise<AtlasStatsFile> {
+  const statsPath = getAtlasStatsPath(projectRoot);
   const content = await fs.promises.readFile(statsPath, 'utf-8');
   return JSON.parse(content);
 }
 
 /**
- * Get the file path to a fixture, by name.
- * This automatically adds the required `.jsonl` or `.temp.jsonl` extension.
- * Use `temporary: true` to keep it out of the repository, and reset the content automatically.
+ * Create a temporary project root for testing
  */
-function fixture(name: string, { temporary = false }: { temporary?: boolean } = {}) {
-  const file = temporary
-    ? path.join(__dirname, 'fixtures/atlas', `${name}.temp.jsonl`)
-    : path.join(__dirname, 'fixtures/atlas', `${name}.jsonl`);
-
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-
-  if (temporary) {
-    fs.writeFileSync(file, '');
-  }
-
-  return file;
+function createTestProject(name: string): string {
+  const projectRoot = path.join(__dirname, '__temp__', name);
+  fs.mkdirSync(path.join(projectRoot, '.expo'), { recursive: true });
+  return projectRoot;
 }

@@ -171,20 +171,20 @@ export async function createAtlasFile(filePath: string) {
 }
 
 /**
+ * Ensure the .expo directory exists for Atlas files.
+ *
+ * @param projectRoot - The root directory of the project
+ */
+export async function ensureExpoDirExists(projectRoot: string) {
+  await fs.promises.mkdir(path.join(projectRoot, '.expo'), { recursive: true });
+}
+
+/**
  * Create the Atlas file if it doesn't exist, or recreate it if it's incompatible.
- * In stats-only mode, only creates the directory without creating the atlas.jsonl file.
  *
  * @param filePath - Path to the atlas.jsonl file
- * @param statsOnly - If true, only ensure directory exists (skip atlas.jsonl creation)
  */
-export async function ensureAtlasFileExist(filePath: string, statsOnly: boolean = false) {
-  // In stats-only mode, just ensure the directory exists
-  if (statsOnly) {
-    await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
-    return true;
-  }
-
-  // Full mode: validate and create atlas.jsonl if needed
+export async function ensureAtlasFileExist(filePath: string) {
   try {
     await validateAtlasFile(filePath);
   } catch (error: any) {

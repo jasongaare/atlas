@@ -2,6 +2,7 @@ import { type MetroConfig } from 'metro-config';
 
 import {
   createAtlasFile,
+  ensureExpoDirExists,
   ensureAtlasFileExist,
   getAtlasPath,
   getAtlasStatsPath,
@@ -19,7 +20,6 @@ type ExpoAtlasOptions = Partial<{
   atlasFile: string;
   /**
    * Only generate the lightweight atlas-stats.json file, skip the full atlas.jsonl.
-   * Reduces disk I/O and saves ~90MB per export.
    * Can also be enabled via EXPO_ATLAS_STATS_ONLY=true environment variable.
    * @default false
    */
@@ -42,7 +42,7 @@ type ExpoAtlasOptions = Partial<{
  *   module.exports = withExpoAtlas(config)
  * ```
  *
- * @example Stats-only mode (skip 90MB atlas.jsonl file):
+ * @example Stats-only mode:
  * ```js
  *   module.exports = withExpoAtlas(config, { statsOnly: true })
  * ```
@@ -64,9 +64,11 @@ export function withExpoAtlas(config: MetroConfig, options: ExpoAtlasOptions = {
   const atlasFile = options?.atlasFile ?? getAtlasPath(projectRoot);
   const metroConfig = convertMetroConfig(config);
 
-  // Ensure directory exists; in stats-only mode, skip creating atlas.jsonl
   // Note(cedric): we don't have to await this, Metro would never bundle before this finishes
-  ensureAtlasFileExist(atlasFile, statsOnly);
+  ensureExpoDirExists(projectRoot);
+  if (!statsOnly) {
+    ensureAtlasFileExist(atlasFile);
+  }
 
   // @ts-expect-error
   config.serializer.customSerializer = (entryPoint, preModules, graph, serializeOptions) => {

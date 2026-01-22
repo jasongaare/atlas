@@ -6,6 +6,7 @@ export { MetroGraphSource } from './data/MetroGraphSource';
 export {
   AtlasFileSource,
   createAtlasFile,
+  ensureExpoDirExists,
   ensureAtlasFileExist,
   validateAtlasFile,
   getAtlasMetdata,
