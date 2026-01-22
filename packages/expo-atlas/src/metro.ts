@@ -97,20 +97,9 @@ export function withExpoAtlas(config: MetroConfig, options: ExpoAtlasOptions = {
  * Fully reset, or recreate, the Expo Atlas file containing all Metro information.
  * This method should only be called once per exporting session, to avoid overwriting data with mutliple Metro instances.
  *
- * In stats-only mode, this skips creating the full atlas.jsonl file.
- *
  * @param projectRoot - The root directory of the project
- * @param statsOnly - Only generate stats file, skip full atlas.jsonl. Defaults to EXPO_ATLAS_STATS_ONLY env var.
  */
-export async function resetExpoAtlasFile(
-  projectRoot: string,
-  statsOnly: boolean = env.EXPO_ATLAS_STATS_ONLY
-) {
-  // Skip creating the atlas.jsonl file in stats-only mode
-  if (statsOnly) {
-    return null;
-  }
-
+export async function resetExpoAtlasFile(projectRoot: string) {
   const filePath = getAtlasPath(projectRoot);
   await createAtlasFile(filePath);
   return filePath;
