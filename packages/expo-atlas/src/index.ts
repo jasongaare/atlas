@@ -6,12 +6,12 @@ export { MetroGraphSource } from './data/MetroGraphSource';
 export {
   AtlasFileSource,
   createAtlasFile,
-  ensureExpoDirExists,
   ensureAtlasFileExist,
-  validateAtlasFile,
+  ensureExpoDirExists,
   getAtlasMetdata,
   getAtlasPath,
   getAtlasStatsPath,
+  validateAtlasFile,
 } from './data/AtlasFileSource';
 
 export { AtlasError, AtlasValidationError } from './utils/errors';

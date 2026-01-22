@@ -2,13 +2,13 @@ import { type MetroConfig } from 'metro-config';
 
 import {
   createAtlasFile,
-  ensureExpoDirExists,
   ensureAtlasFileExist,
+  ensureExpoDirExists,
+  finalizeAtlasStats,
   getAtlasPath,
   getAtlasStatsPath,
   writeAtlasEntry,
   writeAtlasStatsEntry,
-  finalizeAtlasStats,
 } from './data/AtlasFileSource';
 import { convertGraph, convertMetroConfig } from './data/MetroGraphSource';
 import { env } from './utils/env';
@@ -72,7 +72,6 @@ export function withExpoAtlas(config: MetroConfig, options: ExpoAtlasOptions = {
 
   // @ts-expect-error
   config.serializer.customSerializer = (entryPoint, preModules, graph, serializeOptions) => {
-    // Convert once, use twice (optimization)
     const atlasBundle = convertGraph({
       projectRoot,
       entryPoint,
